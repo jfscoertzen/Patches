@@ -1,0 +1,43 @@
+From fc357d366728c5f5004925e751c1b55945d4c3f3 Mon Sep 17 00:00:00 2001
+From: Stephan Coertzen <coertzen.jfs@gmail.com>
+Date: Mon, 8 Feb 2021 08:25:10 +0200
+Subject: [PATCH] Fixed Kroondal ETL Machine Data Dates Issue
+
+---
+ .../Entities/Custom/Machines/QueueScripts/KroondalETL.js    | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/server/api/Data/Entities/Custom/Machines/QueueScripts/KroondalETL.js b/server/api/Data/Entities/Custom/Machines/QueueScripts/KroondalETL.js
+index 6af3a02..c6b1645 100644
+--- a/server/api/Data/Entities/Custom/Machines/QueueScripts/KroondalETL.js
++++ b/server/api/Data/Entities/Custom/Machines/QueueScripts/KroondalETL.js
+@@ -159,7 +159,7 @@ var thisETL = {
+ 
+     CheckMachineDataDatesQueue: {},
+     CheckMachineDataDatesExists: function (Api, dataDateItem, done) {
+-        //console.log(`Checking to add Machine Data Date ${dataDateItem.Date} ${dataDateItem.RigNumber}`);
++        console.log(`Checking to add Machine Data Date ${dataDateItem.Date} ${dataDateItem.RigNumber} ${dataDateItem.ReadingType}`);
+ 
+         Api.Data.GetSpecificEntities({}, 'Machines.DataDates', true, {
+             Date: dataDateItem.Date,
+@@ -167,7 +167,7 @@ var thisETL = {
+             ReadingType: dataDateItem.ReadingType
+         }, function (dataDates) {
+             if (dataDates.length === 0) {
+-                //console.log(`Insert Machine Data Date ${dataDateItem.Date} ${dataDateItem.RigNumber}`);
++                console.log(`Insert Machine Data Date ${dataDateItem.Date} ${dataDateItem.RigNumber} ${dataDateItem.ReadingType}`);
+ 
+                 dataDateItem._id = Api.Core.MongoObjectId();
+ 
+@@ -328,7 +328,7 @@ var thisETL = {
+                                                     ReadingType: refDocument.type,
+                                                     RigNumber: rigNumber
+                                                 };
+-                                                thisETL.CheckMachineDataDatesQueue[`${machineDataDateItem.Date}_${machineDataDateItem.RigNumber}`] = machineDataDateItem;
++                                                thisETL.CheckMachineDataDatesQueue[`${machineDataDateItem.Date}_${machineDataDateItem.RigNumber}_${machineDataDateItem.ReadingType}`] = machineDataDateItem;
+                                             }
+ 
+                                             Api.Data.InsertData({}, 'Machines.Data', machineDataItem, function () { }, Api.StandardApiError, true);
+-- 
+2.25.1
+

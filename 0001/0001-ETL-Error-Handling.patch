@@ -1,0 +1,1076 @@
+From c4c1892329de4dbd5e0558d92720ac021fe381e2 Mon Sep 17 00:00:00 2001
+From: Stephan Coertzen <coertzen.jfs@gmail.com>
+Date: Thu, 4 Feb 2021 13:40:46 +0200
+Subject: [PATCH] ETL Error Handling
+
+---
+ server/api/Data/Api.Data.ProcessEvents.js     | 718 +++++++++---------
+ .../Machines/QueueScripts/KroondalETL.js      | 202 ++---
+ 2 files changed, 466 insertions(+), 454 deletions(-)
+
+diff --git a/server/api/Data/Api.Data.ProcessEvents.js b/server/api/Data/Api.Data.ProcessEvents.js
+index e388da1..35d96b6 100644
+--- a/server/api/Data/Api.Data.ProcessEvents.js
++++ b/server/api/Data/Api.Data.ProcessEvents.js
+@@ -11,203 +11,270 @@ Api.Data.ProcessEvents = function (req, res) {
+     var form = new formidable.IncomingForm();
+ 
+     form.parse(req, function (err, fields, files) {
+-        var token = req.headers.token.toString();
+-        Api.ContextRes = res;
++        if (Api.Core.NotNothing(req.headers.token)) {
++            var token = req.headers.token.toString();
++            Api.ContextRes = res;
+ 
+-        //console.log(fields);
++            //console.log(fields);
+ 
+-        Api.ResponseErrorHandler();
++            Api.ResponseErrorHandler();
+ 
+-        Api.Token.ValidateToken(req, token, Api.GetDeviceID(req), function () {
+-            var afterFetch = function (userData) {
+-                var eventsDone = 0;
+-                var eventsHandler = new Api.Events();
+-                var canContinue = true;
++            Api.Token.ValidateToken(req, token, Api.GetDeviceID(req), function () {
++                var afterFetch = function (userData) {
++                    var eventsDone = 0;
++                    var eventsHandler = new Api.Events();
++                    var canContinue = true;
+ 
+-                var sendToSyncServers = function (eventsToSend) {
+-                    // Dont sync SyncServers
+-                    eventsToSend.forEach(function (event, index) {
+-                        if (event.EntityName === 'App.SyncServers') {
+-                            eventsToSend.splice(index, 1);
+-                        }
+-                    });
+-
+-                    if (eventsToSend.length > 0) {
+-                        var tokenRequester = require('./Api.Data.RequestExternalToken.js');
+-                        var postEventsHandler = require('./Api.Data.RequestExternalPostEvents.js');
+-
+-                        Api.Data.GetAllEntities(req, 'App.SyncServers', true, function (syncServers) {
+-                            syncServers.forEach(function (syncServer) {
+-                                if (Api.Core.NotNothing(syncServer.Host)) {
+-                                    console.log("Requesting token from " + syncServer.Host + " using " + syncServer.Username);
+-
+-                                    tokenRequester.RequestToken(
+-                                        syncServer.Host,
+-                                        syncServer.Port,
+-                                        syncServer.HttpProtocol,
+-                                        syncServer.Username,
+-                                        syncServer.Password,
+-                                        function (token) {
+-                                            console.log('Sending events (' + eventsToSend.length + ') to ' + syncServer.Host);
+-
+-                                            postEventsHandler.PostEventData(
+-                                                syncServer.Host,
+-                                                syncServer.Port,
+-                                                syncServer.HttpProtocol,
+-                                                eventsToSend,
+-                                                fields.Version,
+-                                                true,
+-                                                token,
+-                                                function (msg) {
+-                                                    console.log('Posting events (' + eventsToSend.length + ') successful to ' + syncServer.Host + ': ' + msg);
+-                                                },
+-                                                function (err) {
+-                                                    console.log('Posting events (' + eventsToSend.length + ') error to ' + syncServer.Host + ': ' + JSON.stringify(err));
+-                                                });
+-                                        });
+-                                }
+-                            });
+-                        }, Api.StandardApiError);
+-                    }
+-                };
++                    var sendToSyncServers = function (eventsToSend) {
++                        // Dont sync SyncServers
++                        eventsToSend.forEach(function (event, index) {
++                            if (event.EntityName === 'App.SyncServers') {
++                                eventsToSend.splice(index, 1);
++                            }
++                        });
+ 
+-                var successEvent = function () {
+-                    //eventsHandler.ExecNext();
+-                    eventsDone++;
++                        if (eventsToSend.length > 0) {
++                            var tokenRequester = require('./Api.Data.RequestExternalToken.js');
++                            var postEventsHandler = require('./Api.Data.RequestExternalPostEvents.js');
++
++                            Api.Data.GetAllEntities(req, 'App.SyncServers', true, function (syncServers) {
++                                syncServers.forEach(function (syncServer) {
++                                    if (Api.Core.NotNothing(syncServer.Host)) {
++                                        console.log("Requesting token from " + syncServer.Host + " using " + syncServer.Username);
++
++                                        tokenRequester.RequestToken(
++                                            syncServer.Host,
++                                            syncServer.Port,
++                                            syncServer.HttpProtocol,
++                                            syncServer.Username,
++                                            syncServer.Password,
++                                            function (token) {
++                                                console.log('Sending events (' + eventsToSend.length + ') to ' + syncServer.Host);
++
++                                                postEventsHandler.PostEventData(
++                                                    syncServer.Host,
++                                                    syncServer.Port,
++                                                    syncServer.HttpProtocol,
++                                                    eventsToSend,
++                                                    fields.Version,
++                                                    true,
++                                                    token,
++                                                    function (msg) {
++                                                        console.log('Posting events (' + eventsToSend.length + ') successful to ' + syncServer.Host + ': ' + msg);
++                                                    },
++                                                    function (err) {
++                                                        console.log('Posting events (' + eventsToSend.length + ') error to ' + syncServer.Host + ': ' + JSON.stringify(err));
++                                                    });
++                                            });
++                                    }
++                                });
++                            }, Api.StandardApiError);
++                        }
++                    };
+ 
+-                    if (eventsDone >= fields.Events.length)
+-                        eventsHandler.ExecutionDone();
+-                };
++                    var successEvent = function () {
++                        //eventsHandler.ExecNext();
++                        eventsDone++;
+ 
+-                eventsHandler.ExecutionDone = function () {
+-                    if (!Api.Core.NotNothing(fields.NoSync))
+-                        fields.NoSync = false;
++                        if (eventsDone >= fields.Events.length)
++                            eventsHandler.ExecutionDone();
++                    };
+ 
+-                    if (!(fields.NoSync))
+-                        sendToSyncServers(fields.Events);
+-                };
++                    eventsHandler.ExecutionDone = function () {
++                        if (!Api.Core.NotNothing(fields.NoSync))
++                            fields.NoSync = false;
+ 
+-                if (typeof fields.Events === 'string' || fields.Events instanceof String)
+-                    fields.Events = JSON.parse(fields.Events);
++                        if (!(fields.NoSync))
++                            sendToSyncServers(fields.Events);
++                    };
+ 
+-                //console.log(fields);
++                    if (typeof fields.Events === 'string' || fields.Events instanceof String)
++                        fields.Events = JSON.parse(fields.Events);
+ 
+-                if (!(fields.Version)) {
+-                    if (!res.headerBeenSent) res.status(501).send({ error: { name: 'Wrong version', message: 'You do not have the correct version of the App. You are not allowed to publish information. Please update your app to continue..' } });
+-                    canContinue = false;
+-                } else {
+-                    var getTrueVersion = function (versionArray) {
+-                        var returnVersion = 0;
+-                        var tenCount = 1;
++                    //console.log(fields);
+ 
+-                        for (var i = (versionArray.length - 1); i === 0; i--) {
+-                            returnVersion += parseFloat(versionArray[i] * tenCount);
+-                            tenCount = tenCount * 10;
+-                        }
++                    if (!(fields.Version)) {
++                        if (!res.headerBeenSent) res.status(501).send({ error: { name: 'Wrong version', message: 'You do not have the correct version of the App. You are not allowed to publish information. Please update your app to continue..' } });
++                        canContinue = false;
++                    } else {
++                        var getTrueVersion = function (versionArray) {
++                            var returnVersion = 0;
++                            var tenCount = 1;
++
++                            for (var i = (versionArray.length - 1); i === 0; i--) {
++                                returnVersion += parseFloat(versionArray[i] * tenCount);
++                                tenCount = tenCount * 10;
++                            }
+ 
+-                        return returnVersion;
+-                    };
++                            return returnVersion;
++                        };
+ 
+-                    var floatVersion = getTrueVersion(fields.Version.split('.').join(''));
+-                    var criticalVersion = getTrueVersion(Api.Settings.CriticalVersion.split('.').join(''));
++                        var floatVersion = getTrueVersion(fields.Version.split('.').join(''));
++                        var criticalVersion = getTrueVersion(Api.Settings.CriticalVersion.split('.').join(''));
+ 
+-                    if (!(floatVersion >= criticalVersion)) {
+-                        if (!res.headerBeenSent) res.status(501).send({ error: { name: 'Wrong version', message: 'You do not have the correct version of the App. You are not allowed to publish information. Please update your app to continue..' } });
+-                        canContinue = false;
++                        if (!(floatVersion >= criticalVersion)) {
++                            if (!res.headerBeenSent) res.status(501).send({ error: { name: 'Wrong version', message: 'You do not have the correct version of the App. You are not allowed to publish information. Please update your app to continue..' } });
++                            canContinue = false;
++                        }
+                     }
+-                }
+ 
+-                if ((fields.Events) && (fields.Version) && canContinue) {
+-                    var canDelete = true;
+-                    var dataAudits = [];
+-                    var trashData = [];
++                    if ((fields.Events) && (fields.Version) && canContinue) {
++                        var canDelete = true;
++                        var dataAudits = [];
++                        var trashData = [];
+ 
+-                    // Check if there are deletes
+-                    fields.Events.forEach(function (event) {
+-                        if ((event.Event === "Delete") && (!event.SkipDeleteIntegrityCheck)) {
+-                            canDelete = canDelete && Api.Data.ScanObjectForDelete(userData, event.Data);
+-                        }
++                        // Check if there are deletes
++                        fields.Events.forEach(function (event) {
++                            if ((event.Event === "Delete") && (!event.SkipDeleteIntegrityCheck)) {
++                                canDelete = canDelete && Api.Data.ScanObjectForDelete(userData, event.Data);
++                            }
+ 
+-                        if (Api.Core.IsArray(event.Data)) {
+-                            event.Data.forEach(function (obj) {
+-                                for (var attr in obj) {
+-                                    if (obj[attr])
+-                                        if (obj[attr].toString().indexOf('%ConvDateTime%:') !== -1) {
+-                                            obj[attr] = new Date(obj[attr]);
++                            if (Api.Core.IsArray(event.Data)) {
++                                event.Data.forEach(function (obj) {
++                                    for (var attr in obj) {
++                                        if (obj[attr])
++                                            if (obj[attr].toString().indexOf('%ConvDateTime%:') !== -1) {
++                                                obj[attr] = new Date(obj[attr]);
++                                            }
++                                    }
++                                });
++                            } else {
++                                for (var attr in event.Data) {
++                                    if (event.Data[attr])
++                                        if (event.Data[attr].toString().indexOf('%ConvDateTime%:') !== -1) {
++                                            event.Data[attr] = new Date(event.Data[attr].toString().split('%ConvDateTime%:').join(''));
+                                         }
+                                 }
+-                            });
+-                        } else {
+-                            for (var attr in event.Data) {
+-                                if (event.Data[attr])
+-                                    if (event.Data[attr].toString().indexOf('%ConvDateTime%:') !== -1) {
+-                                        event.Data[attr] = new Date(event.Data[attr].toString().split('%ConvDateTime%:').join(''));
+-                                    }
+                             }
+-                        }
+-                    });
++                        });
+ 
+-                    var newError = function (err) {
+-                        if (JSON.stringify(err).indexOf('Cannot insert values. It already exists.') === -1) {
+-                            var stringErr = JSON.stringify(err);
+-                            if (stringErr.indexOf('duplicate key error collection') !== -1)
+-                                successEvent();
++                        var newError = function (err) {
++                            if (JSON.stringify(err).indexOf('Cannot insert values. It already exists.') === -1) {
++                                var stringErr = JSON.stringify(err);
++                                if (stringErr.indexOf('duplicate key error collection') !== -1)
++                                    successEvent();
+ 
+-                            if (JSON.stringify(err).indexOf('Check insert error') === -1) {
+-                                console.info(JSON.stringify(err) + ' [' + ((err) ? ((err.stack) ? err.stack.toString().split('\n').join('') : '') : '') + ']');
+-                                console.log(JSON.stringify(err) + ' [' + ((err) ? ((err.stack) ? err.stack.toString().split('\n').join('') : '') : '') + ']');
+-                            }
+-                            if (!Api.ContextRes.headerBeenSent) Api.ContextRes.status(500).send({ error: err });
+-                        } else
+-                            successEvent();
+-                    };
++                                if (JSON.stringify(err).indexOf('Check insert error') === -1) {
++                                    console.info(JSON.stringify(err) + ' [' + ((err) ? ((err.stack) ? err.stack.toString().split('\n').join('') : '') : '') + ']');
++                                    console.log(JSON.stringify(err) + ' [' + ((err) ? ((err.stack) ? err.stack.toString().split('\n').join('') : '') : '') + ']');
++                                }
++                                if (!Api.ContextRes.headerBeenSent) Api.ContextRes.status(500).send({ error: err });
++                            } else
++                                successEvent();
++                        };
+ 
+ 
+-                    if (!canDelete) {
+-                        throw new (function () {
+-                            this.name = "Can't delete";
+-                            this.message = "The data you want to delete is referenced elsewhere. Delete canceled.";
+-                        })();
+-                    }
++                        if (!canDelete) {
++                            throw new (function () {
++                                this.name = "Can't delete";
++                                this.message = "The data you want to delete is referenced elsewhere. Delete canceled.";
++                            })();
++                        }
+ 
+-                    if (canContinue) {
+-                        if (!res.headerBeenSent) {
+-                            res.send("Done");
++                        if (canContinue) {
++                            if (!res.headerBeenSent) {
++                                res.send("Done");
++                            }
+                         }
+-                    }
+ 
+-                    if (canDelete) {
+-                        fields.Events.forEach(function (event) {
+-                            try {
+-                                //if (event.EntityName !== "App.JwtWebTokens")
+-                                switch (event.Event) {
+-                                    case 'New':
+-                                        var afterCheck = function (doInsert) {
+-                                            if (event.EntityName === 'App.UserLocalStorage') {
+-                                                Api.Data.DeleteData(req,
+-                                                    event.EntityName, { _id: event.Data._id },
+-                                                    function () {
++                        if (canDelete) {
++                            fields.Events.forEach(function (event) {
++                                try {
++                                    //if (event.EntityName !== "App.JwtWebTokens")
++                                    switch (event.Event) {
++                                        case 'New':
++                                            var afterCheck = function (doInsert) {
++                                                if (event.EntityName === 'App.UserLocalStorage') {
++                                                    Api.Data.DeleteData(req,
++                                                        event.EntityName, { _id: event.Data._id },
++                                                        function () {
++                                                            Api.Data.InsertData(req,
++                                                                event.EntityName,
++                                                                event.Data,
++                                                                successEvent,
++                                                                newError
++                                                            );
++                                                        },
++                                                        newError, true
++                                                    );
++                                                } else {
++                                                    if (doInsert)
+                                                         Api.Data.InsertData(req,
+                                                             event.EntityName,
+                                                             event.Data,
+                                                             successEvent,
+                                                             newError
+                                                         );
+-                                                    },
+-                                                    newError, true
++                                                }
++
++                                                if (!Api.Data.EntityClasses[event.EntityName].NoDataAudits) {
++                                                    if (doInsert) {
++                                                        var remoteAddr = req.headers['x-forwarded-for'] || (req.connection && req.connection.remoteAddress) || '';
++                                                        var localAddr = (req.connection && req.connection.localAddress) || '';
++                                                        var headers = JSON.parse(JSON.stringify(req.headers)); delete headers.token;
++
++                                                        Api.Data.InsertData(req,
++                                                            'App.DataAudits',
++                                                            [{
++                                                                _id: Api.Core.MongoObjectId(),
++                                                                UserName: req.LoggedInUser.UserName,
++                                                                Entity: event.EntityName,
++                                                                Action: 'New',
++                                                                RemoteAddress: remoteAddr,
++                                                                LocalAddress: localAddr,
++                                                                ReqIp: req.ip,
++                                                                ReqIps: req.ips,
++                                                                SignedCookies: req.signedCookies,
++                                                                Subdomains: req.subdomains,
++                                                                RequestHeaders: headers,
++                                                                EntityID: ((Api.Core.NotNothing(event.Data._id)) ? event.Data._id : ''),
++                                                                Data: event.Data,
++                                                                DateCreated: (new Date())
++                                                            }],
++                                                            function () { },
++                                                            Api.StandardApiError,
++                                                            true
++                                                        );
++                                                        /*dataAudits.push({
++                                                            _id: Api.Core.MongoObjectId(),
++                                                            UserName: req.LoggedInUser.UserName,
++                                                            Entity: event.EntityName,
++                                                            Action: 'New',
++                                                            EntityID: ((Api.Core.NotNothing(event.Data._id)) ? event.Data._id : ''),
++                                                            Data: event.Data,
++                                                            DateCreated: (new Date())
++                                                        });*/
++                                                    }
++                                                }
++
++                                                if (!doInsert)
++                                                    successEvent();
++                                            };
++
++                                            if (event.EntityName === 'App.UserLocalStorage')
++                                                afterCheck(true);
++                                            else if (event.Data._id) {
++                                                Api.Data.GetSpecificEntities(req, event.EntityName, false, { '_id': event.Data._id }, function (checkEntity) {
++                                                    if (checkEntity.length === 0)
++                                                        afterCheck(true);
++                                                    else
++                                                        afterCheck(false);
++                                                }, Api.StandardApiError);
++                                            } else
++                                                afterCheck(true);
++                                            break;
++                                        case 'Edit':
++                                            if (Api.Core.NotNothing(event.Data._id)) {
++                                                var entityId = event.Data._id.toString();
++
++                                                Api.Data.UpdateData(req,
++                                                    event.EntityName, { _id: entityId },
++                                                    event.Data,
++                                                    successEvent,
++                                                    Api.StandardApiError
+                                                 );
+-                                            } else {
+-                                                if (doInsert)
+-                                                    Api.Data.InsertData(req,
+-                                                        event.EntityName,
+-                                                        event.Data,
+-                                                        successEvent,
+-                                                        newError
+-                                                    );
+-                                            }
+ 
+-                                            if (!Api.Data.EntityClasses[event.EntityName].NoDataAudits) {
+-                                                if (doInsert) {
++                                                if (!Api.Data.EntityClasses[event.EntityName].NoDataAudits) {
+                                                     var remoteAddr = req.headers['x-forwarded-for'] || (req.connection && req.connection.remoteAddress) || '';
+                                                     var localAddr = (req.connection && req.connection.localAddress) || '';
+                                                     var headers = JSON.parse(JSON.stringify(req.headers)); delete headers.token;
+@@ -218,7 +285,7 @@ Api.Data.ProcessEvents = function (req, res) {
+                                                             _id: Api.Core.MongoObjectId(),
+                                                             UserName: req.LoggedInUser.UserName,
+                                                             Entity: event.EntityName,
+-                                                            Action: 'New',
++                                                            Action: 'Edit',
+                                                             RemoteAddress: remoteAddr,
+                                                             LocalAddress: localAddr,
+                                                             ReqIp: req.ip,
+@@ -234,112 +301,94 @@ Api.Data.ProcessEvents = function (req, res) {
+                                                         Api.StandardApiError,
+                                                         true
+                                                     );
+-                                                    /*dataAudits.push({
+-                                                        _id: Api.Core.MongoObjectId(),
+-                                                        UserName: req.LoggedInUser.UserName,
+-                                                        Entity: event.EntityName,
+-                                                        Action: 'New',
+-                                                        EntityID: ((Api.Core.NotNothing(event.Data._id)) ? event.Data._id : ''),
+-                                                        Data: event.Data,
+-                                                        DateCreated: (new Date())
+-                                                    });*/
+                                                 }
+-                                            }
++                                            } else if (Api.Core.NotNothing(event.Data.Name)) {
++                                                var entityId = event.Data.Name.toString();
++
++                                                Api.Data.UpdateData(req,
++                                                    event.EntityName, { Name: entityId },
++                                                    event.Data,
++                                                    successEvent,
++                                                    Api.StandardApiError
++                                                );
+ 
+-                                            if (!doInsert)
+-                                                successEvent();
+-                                        };
+-
+-                                        if (event.EntityName === 'App.UserLocalStorage')
+-                                            afterCheck(true);
+-                                        else if (event.Data._id) {
+-                                            Api.Data.GetSpecificEntities(req, event.EntityName, false, { '_id': event.Data._id }, function (checkEntity) {
+-                                                if (checkEntity.length === 0)
+-                                                    afterCheck(true);
+-                                                else
+-                                                    afterCheck(false);
+-                                            }, Api.StandardApiError);
+-                                        } else
+-                                            afterCheck(true);
+-                                        break;
+-                                    case 'Edit':
+-                                        if (Api.Core.NotNothing(event.Data._id)) {
+-                                            var entityId = event.Data._id.toString();
+-
+-                                            Api.Data.UpdateData(req,
+-                                                event.EntityName, { _id: entityId },
+-                                                event.Data,
+-                                                successEvent,
+-                                                Api.StandardApiError
+-                                            );
++                                                if (!Api.Data.EntityClasses[event.EntityName].NoDataAudits) {
++                                                    var remoteAddr = req.headers['x-forwarded-for'] || (req.connection && req.connection.remoteAddress) || '';
++                                                    var localAddr = (req.connection && req.connection.localAddress) || '';
++                                                    var headers = JSON.parse(JSON.stringify(req.headers)); delete headers.token;
+ 
+-                                            if (!Api.Data.EntityClasses[event.EntityName].NoDataAudits) {
++                                                    Api.Data.InsertData(req,
++                                                        'App.DataAudits',
++                                                        [{
++                                                            _id: Api.Core.MongoObjectId(),
++                                                            UserName: req.LoggedInUser.UserName,
++                                                            Entity: event.EntityName,
++                                                            Action: 'Edit',
++                                                            RemoteAddress: remoteAddr,
++                                                            LocalAddress: localAddr,
++                                                            ReqIp: req.ip,
++                                                            ReqIps: req.ips,
++                                                            SignedCookies: req.signedCookies,
++                                                            Subdomains: req.subdomains,
++                                                            RequestHeaders: headers,
++                                                            EntityID: ((Api.Core.NotNothing(event.Data.Name)) ? event.Data.Name : ''),
++                                                            Data: event.Data,
++                                                            DateCreated: (new Date())
++                                                        }],
++                                                        function () { },
++                                                        Api.StandardApiError,
++                                                        true
++                                                    );
++                                                }
++                                            } else {
+                                                 var remoteAddr = req.headers['x-forwarded-for'] || (req.connection && req.connection.remoteAddress) || '';
+                                                 var localAddr = (req.connection && req.connection.localAddress) || '';
+                                                 var headers = JSON.parse(JSON.stringify(req.headers)); delete headers.token;
+ 
+-                                                Api.Data.InsertData(req,
+-                                                    'App.DataAudits',
+-                                                    [{
+-                                                        _id: Api.Core.MongoObjectId(),
+-                                                        UserName: req.LoggedInUser.UserName,
+-                                                        Entity: event.EntityName,
+-                                                        Action: 'Edit',
+-                                                        RemoteAddress: remoteAddr,
+-                                                        LocalAddress: localAddr,
+-                                                        ReqIp: req.ip,
+-                                                        ReqIps: req.ips,
+-                                                        SignedCookies: req.signedCookies,
+-                                                        Subdomains: req.subdomains,
+-                                                        RequestHeaders: headers,
+-                                                        EntityID: ((Api.Core.NotNothing(event.Data._id)) ? event.Data._id : ''),
+-                                                        Data: event.Data,
+-                                                        DateCreated: (new Date())
+-                                                    }],
+-                                                    function () { },
+-                                                    Api.StandardApiError,
+-                                                    true
+-                                                );
++                                                if (!Api.Data.EntityClasses[event.EntityName].NoDataAudits) {
++                                                    Api.Data.InsertData(req,
++                                                        'App.DataAudits',
++                                                        [{
++                                                            _id: Api.Core.MongoObjectId(),
++                                                            UserName: req.LoggedInUser.UserName,
++                                                            Entity: event.EntityName,
++                                                            Action: 'Edit',
++                                                            RemoteAddress: remoteAddr,
++                                                            LocalAddress: localAddr,
++                                                            ReqIp: req.ip,
++                                                            ReqIps: req.ips,
++                                                            SignedCookies: req.signedCookies,
++                                                            Subdomains: req.subdomains,
++                                                            RequestHeaders: headers,
++                                                            EntityID: ((Api.Core.NotNothing(event.Data._id)) ? event.Data._id : ''),
++                                                            Data: event.Data,
++                                                            DateCreated: (new Date())
++                                                        }],
++                                                        function () { },
++                                                        Api.StandardApiError,
++                                                        true
++                                                    );
++                                                }
+                                             }
+-                                        } else if (Api.Core.NotNothing(event.Data.Name)) {
+-                                            var entityId = event.Data.Name.toString();
+-
+-                                            Api.Data.UpdateData(req,
+-                                                event.EntityName, { Name: entityId },
+-                                                event.Data,
++                                            //]);
++                                            break;
++                                        case 'Delete':
++                                            //eventsHandler.AddWait('DeleteData', Api.Data.DeleteData, [
++                                            Api.Data.DeleteData(req,
++                                                event.EntityName, { _id: event.Data._id },
+                                                 successEvent,
+                                                 Api.StandardApiError
+                                             );
+ 
+-                                            if (!Api.Data.EntityClasses[event.EntityName].NoDataAudits) {
+-                                                var remoteAddr = req.headers['x-forwarded-for'] || (req.connection && req.connection.remoteAddress) || '';
+-                                                var localAddr = (req.connection && req.connection.localAddress) || '';
+-                                                var headers = JSON.parse(JSON.stringify(req.headers)); delete headers.token;
+-
+-                                                Api.Data.InsertData(req,
+-                                                    'App.DataAudits',
+-                                                    [{
+-                                                        _id: Api.Core.MongoObjectId(),
+-                                                        UserName: req.LoggedInUser.UserName,
+-                                                        Entity: event.EntityName,
+-                                                        Action: 'Edit',
+-                                                        RemoteAddress: remoteAddr,
+-                                                        LocalAddress: localAddr,
+-                                                        ReqIp: req.ip,
+-                                                        ReqIps: req.ips,
+-                                                        SignedCookies: req.signedCookies,
+-                                                        Subdomains: req.subdomains,
+-                                                        RequestHeaders: headers,
+-                                                        EntityID: ((Api.Core.NotNothing(event.Data.Name)) ? event.Data.Name : ''),
+-                                                        Data: event.Data,
+-                                                        DateCreated: (new Date())
+-                                                    }],
+-                                                    function () { },
+-                                                    Api.StandardApiError,
+-                                                    true
+-                                                );
+-                                            }
+-                                        } else {
++                                            /*dataAudits.push({
++                                                _id: Api.Core.MongoObjectId(),
++                                                UserName: req.LoggedInUser.UserName,
++                                                Entity: event.EntityName,
++                                                Action: 'Delete',
++                                                EntityID: ((Api.Core.NotNothing(event.Data._id)) ? event.Data._id : ''),
++                                                Data: event.Data,
++                                                DateCreated: (new Date())
++                                            });*/
+                                             var remoteAddr = req.headers['x-forwarded-for'] || (req.connection && req.connection.remoteAddress) || '';
+                                             var localAddr = (req.connection && req.connection.localAddress) || '';
+                                             var headers = JSON.parse(JSON.stringify(req.headers)); delete headers.token;
+@@ -351,7 +400,7 @@ Api.Data.ProcessEvents = function (req, res) {
+                                                         _id: Api.Core.MongoObjectId(),
+                                                         UserName: req.LoggedInUser.UserName,
+                                                         Entity: event.EntityName,
+-                                                        Action: 'Edit',
++                                                        Action: 'Delete',
+                                                         RemoteAddress: remoteAddr,
+                                                         LocalAddress: localAddr,
+                                                         ReqIp: req.ip,
+@@ -367,112 +416,67 @@ Api.Data.ProcessEvents = function (req, res) {
+                                                     Api.StandardApiError,
+                                                     true
+                                                 );
+-                                            }
+-                                        }
+-                                        //]);
+-                                        break;
+-                                    case 'Delete':
+-                                        //eventsHandler.AddWait('DeleteData', Api.Data.DeleteData, [
+-                                        Api.Data.DeleteData(req,
+-                                            event.EntityName, { _id: event.Data._id },
+-                                            successEvent,
+-                                            Api.StandardApiError
+-                                        );
+-
+-                                        /*dataAudits.push({
+-                                            _id: Api.Core.MongoObjectId(),
+-                                            UserName: req.LoggedInUser.UserName,
+-                                            Entity: event.EntityName,
+-                                            Action: 'Delete',
+-                                            EntityID: ((Api.Core.NotNothing(event.Data._id)) ? event.Data._id : ''),
+-                                            Data: event.Data,
+-                                            DateCreated: (new Date())
+-                                        });*/
+-                                        var remoteAddr = req.headers['x-forwarded-for'] || (req.connection && req.connection.remoteAddress) || '';
+-                                        var localAddr = (req.connection && req.connection.localAddress) || '';
+-                                        var headers = JSON.parse(JSON.stringify(req.headers)); delete headers.token;
+-
+-                                        if (!Api.Data.EntityClasses[event.EntityName].NoDataAudits) {
+-                                            Api.Data.InsertData(req,
+-                                                'App.DataAudits',
+-                                                [{
+-                                                    _id: Api.Core.MongoObjectId(),
+-                                                    UserName: req.LoggedInUser.UserName,
+-                                                    Entity: event.EntityName,
+-                                                    Action: 'Delete',
+-                                                    RemoteAddress: remoteAddr,
+-                                                    LocalAddress: localAddr,
+-                                                    ReqIp: req.ip,
+-                                                    ReqIps: req.ips,
+-                                                    SignedCookies: req.signedCookies,
+-                                                    Subdomains: req.subdomains,
+-                                                    RequestHeaders: headers,
+-                                                    EntityID: ((Api.Core.NotNothing(event.Data._id)) ? event.Data._id : ''),
+-                                                    Data: event.Data,
+-                                                    DateCreated: (new Date())
+-                                                }],
+-                                                function () { },
+-                                                Api.StandardApiError,
+-                                                true
+-                                            );
+ 
+-                                            if (event.EntityName !== 'App.Trash')
+-                                                trashData.push({
+-                                                    _id: Api.Core.MongoObjectId(),
+-                                                    Origin: event.EntityName,
+-                                                    Data: event.Data,
+-                                                    DeletedBy: req.LoggedInUser.UserName,
+-                                                    DeletedDate: (new Date())
+-                                                });
++                                                if (event.EntityName !== 'App.Trash')
++                                                    trashData.push({
++                                                        _id: Api.Core.MongoObjectId(),
++                                                        Origin: event.EntityName,
++                                                        Data: event.Data,
++                                                        DeletedBy: req.LoggedInUser.UserName,
++                                                        DeletedDate: (new Date())
++                                                    });
+ 
+-                                        }
+-                                        //]);
+-                                        break;
++                                            }
++                                            //]);
++                                            break;
++                                    }
++                                } catch (ex) {
++                                    successEvent();
++                                    console.log(ex);
++                                    console.info("Error Process Events: " + JSON.stringify(ex) + '\n');
+                                 }
+-                            } catch (ex) {
+-                                successEvent();
+-                                console.log(ex);
+-                                console.info("Error Process Events: " + JSON.stringify(ex) + '\n');
+-                            }
+-                        });
++                            });
++
++                            /*if (dataAudits.length > 0)
++                                Api.Data.InsertData(req,
++                                    'App.DataAudits',
++                                    dataAudits,
++                                    function() {},
++                                    Api.StandardApiError,
++                                    true
++                                );*/
++
++                            if (trashData.length > 0)
++                                Api.Data.InsertData(req,
++                                    'App.Trash',
++                                    trashData,
++                                    function () { },
++                                    Api.StandardApiError,
++                                    true
++                                );
++                        }
++                    }
++
++                    //eventsHandler.ExecNext();                
++                };
+ 
+-                        /*if (dataAudits.length > 0)
+-                            Api.Data.InsertData(req,
+-                                'App.DataAudits',
+-                                dataAudits,
+-                                function() {},
+-                                Api.StandardApiError,
+-                                true
+-                            );*/
+-
+-                        if (trashData.length > 0)
+-                            Api.Data.InsertData(req,
+-                                'App.Trash',
+-                                trashData,
+-                                function () { },
+-                                Api.StandardApiError,
+-                                true
+-                            );
++                var containsDelete = false;
++                /*fields.Events.forEach(function(event) {
++                    if ((event.Event === "Delete") && (!event.SkipDeleteIntegrityCheck)) {
++                        containsDelete = true;
+                     }
+-                }
+-
+-                //eventsHandler.ExecNext();                
+-            };
+-
+-            var containsDelete = false;
+-            /*fields.Events.forEach(function(event) {
+-                if ((event.Event === "Delete") && (!event.SkipDeleteIntegrityCheck)) {
+-                    containsDelete = true;
+-                }
+-            });*/
+-
+-            if (containsDelete) {
+-                require('./Api.Data.DataProvider.js').GetUserData(req, function (userData) {
+-                    afterFetch(userData);
+-                }, true);
+-            } else
+-                afterFetch([]);
+-        }, Api.StandardApiError);
++                });*/
++
++                if (containsDelete) {
++                    require('./Api.Data.DataProvider.js').GetUserData(req, function (userData) {
++                        afterFetch(userData);
++                    }, true);
++                } else
++                    afterFetch([]);
++            }, Api.StandardApiError);
++        } else {
++            if (!Api.ContextRes.headerBeenSent) Api.ContextRes.status(500).send({ error: { name: 'No Token', message: 'Please Provide a Token for the Request' } });
++        }
+     });
+ };
+ 
+diff --git a/server/api/Data/Entities/Custom/Machines/QueueScripts/KroondalETL.js b/server/api/Data/Entities/Custom/Machines/QueueScripts/KroondalETL.js
+index 6895d79..9833a02 100644
+--- a/server/api/Data/Entities/Custom/Machines/QueueScripts/KroondalETL.js
++++ b/server/api/Data/Entities/Custom/Machines/QueueScripts/KroondalETL.js
+@@ -62,7 +62,7 @@ var thisETL = {
+                     console.log(`Update Person ${person.employee_number}`);
+                     Api.Data.UpdateData({}, 'Proj.Resources', { _id: resource[0]._id }, resource[0], function () { }, Api.StandardApiError, true);
+ 
+-                    thisETL.CheckResourceMetricView(Api, resource[0], function() {
++                    thisETL.CheckResourceMetricView(Api, resource[0], function () {
+                         done();
+                     });
+                 } else done();
+@@ -96,7 +96,7 @@ var thisETL = {
+                 console.log(`Insert Person ${person.employee_number}`);
+                 Api.Data.InsertData({}, 'Proj.Resources', newResource, function () { }, Api.StandardApiError, true);
+ 
+-                thisETL.CheckResourceMetricView(Api, newResource, function() {
++                thisETL.CheckResourceMetricView(Api, newResource, function () {
+                     done();
+                 });
+             }
+@@ -120,7 +120,7 @@ var thisETL = {
+                     console.log(`Update Equipment ${equipment.name}`);
+                     Api.Data.UpdateData({}, 'Proj.Resources', { _id: resource[0]._id }, resource[0], function () { }, Api.StandardApiError, true);
+ 
+-                    thisETL.CheckResourceMetricView(Api, resource[0], function() {
++                    thisETL.CheckResourceMetricView(Api, resource[0], function () {
+                         done();
+                     });
+                 } else done();
+@@ -150,7 +150,7 @@ var thisETL = {
+                 console.log(`Insert Equipment ${equipment.name}`);
+                 Api.Data.InsertData({}, 'Proj.Resources', newResource, function () { }, Api.StandardApiError, true);
+ 
+-                thisETL.CheckResourceMetricView(Api, newResource, function() {
++                thisETL.CheckResourceMetricView(Api, newResource, function () {
+                     done();
+                 });
+             }
+@@ -239,102 +239,108 @@ var thisETL = {
+ 
+                         var handleChange = function (change) {
+                             if (change.operationType === 'insert') {
+-                                if (change.fullDocument) {
+-                                    if (change.fullDocument.uploader === specificUser[0].UserName) {
+-                                        var refDocument = change.fullDocument;
+-                                        var dateTime = moment(refDocument.time_utc);
+-                                        var rigNumber = '';
+-
+-                                        var machineDataItem = {
+-                                            Date: dateTime.format('DD/MM/YYYY'),
+-                                            Time: dateTime.format('HH:mm:ss'),
+-                                            Type: refDocument.type,
+-                                            DateTime: dateTime.toDate()
+-                                        };
+-
+-                                        var personID = function (person) {
+-                                            return `${person.lamproom_id.split(' ').join('').toLowerCase()}_${person.employee_number.split(' ').join('').toLowerCase()}`;
+-                                        }
+-                                        var equipmentID = function (equipment) {
+-                                            return `${equipment.name.split(' ').join('').toLowerCase()}_${equipment.type.split(' ').join('').toLowerCase()}`;
+-                                        }
+-
+-                                        switch (refDocument.type) {
+-                                            case 'Infringement':
+-                                                rigNumber = personID(refDocument.infringer);
+-                                                thisETL.CheckPersonQueue[refDocument.infringer.employee_number] = refDocument.infringer;
+-                                                thisETL.CheckPersonQueue[refDocument.equipment_operator.employee_number] = refDocument.equipment_operator;
+-                                                thisETL.CheckEquipmentQueue[refDocument.equipment.name] = refDocument.equipment;
+-
+-                                                machineDataItem.RigNumber = rigNumber;
+-                                                machineDataItem.Infringer = rigNumber;
+-                                                machineDataItem.EquipmentOperator = personID(refDocument.equipment_operator);
+-                                                machineDataItem.Equipment = equipmentID(refDocument.equipment);
+-                                                machineDataItem.DirectionName = refDocument.direction_name;
+-                                                machineDataItem.ProximityClassName = refDocument.proximity_class_name;
+-                                                break;
+-                                            case 'InfringementVehicle':
+-                                                rigNumber = equipmentID(refDocument.infringer);
+-                                                thisETL.CheckEquipmentQueue[refDocument.infringer.name] = refDocument.infringer;
+-                                                thisETL.CheckEquipmentQueue[refDocument.equipment.name] = refDocument.equipment;
+-                                                thisETL.CheckPersonQueue[refDocument.equipment_operator.employee_number] = refDocument.equipment_operator;
+-
+-                                                machineDataItem.RigNumber = rigNumber;
+-                                                machineDataItem.Infringer = rigNumber;
+-                                                machineDataItem.Equipment = equipmentID(refDocument.equipment);
+-                                                machineDataItem.EquipmentOperator = personID(refDocument.equipment_operator);
+-                                                machineDataItem.InfringerEquipmentOperator = personID(refDocument.infringer_equipment_operator);
+-                                                machineDataItem.DirectionName = refDocument.direction_name;
+-                                                machineDataItem.ProximityClassName = refDocument.proximity_class_name;
+-                                                break;
+-                                            case 'ZoneTransition':
+-                                                rigNumber = personID(refDocument.visitor);
+-                                                thisETL.CheckPersonQueue[refDocument.visitor.employee_number] = refDocument.visitor;
+-
+-                                                machineDataItem.RigNumber = rigNumber;
+-                                                machineDataItem.Visitor = rigNumber;
+-                                                machineDataItem.Position = refDocument.reader.name;
+-                                                machineDataItem.PositionRegion = refDocument.reader.region;
+-                                                machineDataItem.DirectionName = refDocument.direction_name;
+-                                                break;
+-                                            case 'ZoneTransitionVehicle':
+-                                                rigNumber = equipmentID(refDocument.visitor);
+-                                                thisETL.CheckEquipmentQueue[refDocument.visitor.name] = refDocument.visitor;
+-                                                thisETL.CheckPersonQueue[refDocument.equipment_operator.employee_number] = refDocument.equipment_operator;
+-
+-                                                machineDataItem.RigNumber = rigNumber;
+-                                                machineDataItem.Visitor = rigNumber;
+-                                                machineDataItem.Position = refDocument.reader.name;
+-                                                machineDataItem.PositionRegion = refDocument.reader.region;                                                
+-                                                machineDataItem.EquipmentOperator = personID(refDocument.equipment_operator);
+-                                                machineDataItem.DirectionName = refDocument.direction_name;
+-                                                break;
+-                                            case 'TagTest':
+-                                                rigNumber = personID(refDocument.person);
+-                                                thisETL.CheckPersonQueue[refDocument.person.employee_number] = refDocument.person;
+-
+-                                                machineDataItem.RigNumber = rigNumber;
+-                                                machineDataItem.Person = rigNumber;        
+-                                                machineDataItem.OverallResult = refDocument.overall_result;
+-                                                break;
+-                                        }
+-
+-                                        if (rigNumber !== '') {
+-                                            var machineDataDateItem = {
++                                try {
++                                    if (change.fullDocument) {
++                                        if (change.fullDocument.uploader === specificUser[0].UserName) {
++                                            var refDocument = change.fullDocument;
++                                            var dateTime = moment(refDocument.time_utc);
++                                            var rigNumber = '';
++
++                                            var machineDataItem = {
+                                                 Date: dateTime.format('DD/MM/YYYY'),
+-                                                DateObj: dateTime.toDate(),
+-                                                Done: true,
+-                                                ReadingType: refDocument.type,
+-                                                RigNumber: rigNumber
++                                                Time: dateTime.format('HH:mm:ss'),
++                                                Type: refDocument.type,
++                                                DateTime: dateTime.toDate()
+                                             };
+-                                            thisETL.CheckMachineDataDatesQueue[`${machineDataDateItem.Date}_${machineDataDateItem.RigNumber}`] = machineDataDateItem;
+-                                        }
+ 
+-                                        Api.Data.InsertData({}, 'Machines.Data', machineDataItem, function () { }, Api.StandardApiError, true);
+-
+-                                        Api.Data.DeleteData({}, 'Machines.Queue', change.documentKey, function () {
+-                                        }, Api.StandardApiError, true, true);
++                                            var personID = function (person) {
++                                                return `${person.lamproom_id.split(' ').join('').toLowerCase()}_${person.employee_number.split(' ').join('').toLowerCase()}`;
++                                            }
++                                            var equipmentID = function (equipment) {
++                                                return `${equipment.name.split(' ').join('').toLowerCase()}_${equipment.type.split(' ').join('').toLowerCase()}`;
++                                            }
++
++                                            switch (refDocument.type) {
++                                                case 'Infringement':
++                                                    rigNumber = personID(refDocument.infringer);
++                                                    thisETL.CheckPersonQueue[refDocument.infringer.employee_number] = refDocument.infringer;
++                                                    thisETL.CheckPersonQueue[refDocument.equipment_operator.employee_number] = refDocument.equipment_operator;
++                                                    thisETL.CheckEquipmentQueue[refDocument.equipment.name] = refDocument.equipment;
++
++                                                    machineDataItem.RigNumber = rigNumber;
++                                                    machineDataItem.Infringer = rigNumber;
++                                                    machineDataItem.EquipmentOperator = personID(refDocument.equipment_operator);
++                                                    machineDataItem.Equipment = equipmentID(refDocument.equipment);
++                                                    machineDataItem.DirectionName = refDocument.direction_name;
++                                                    machineDataItem.ProximityClassName = refDocument.proximity_class_name;
++                                                    break;
++                                                case 'InfringementVehicle':
++                                                    rigNumber = equipmentID(refDocument.infringer);
++                                                    thisETL.CheckEquipmentQueue[refDocument.infringer.name] = refDocument.infringer;
++                                                    thisETL.CheckEquipmentQueue[refDocument.equipment.name] = refDocument.equipment;
++                                                    thisETL.CheckPersonQueue[refDocument.equipment_operator.employee_number] = refDocument.equipment_operator;
++
++                                                    machineDataItem.RigNumber = rigNumber;
++                                                    machineDataItem.Infringer = rigNumber;
++                                                    machineDataItem.Equipment = equipmentID(refDocument.equipment);
++                                                    machineDataItem.EquipmentOperator = personID(refDocument.equipment_operator);
++                                                    machineDataItem.InfringerEquipmentOperator = personID(refDocument.infringer_equipment_operator);
++                                                    machineDataItem.DirectionName = refDocument.direction_name;
++                                                    machineDataItem.ProximityClassName = refDocument.proximity_class_name;
++                                                    break;
++                                                case 'ZoneTransition':
++                                                    rigNumber = personID(refDocument.visitor);
++                                                    thisETL.CheckPersonQueue[refDocument.visitor.employee_number] = refDocument.visitor;
++
++                                                    machineDataItem.RigNumber = rigNumber;
++                                                    machineDataItem.Visitor = rigNumber;
++                                                    machineDataItem.Position = refDocument.reader.name;
++                                                    machineDataItem.PositionRegion = refDocument.reader.region;
++                                                    machineDataItem.DirectionName = refDocument.direction_name;
++                                                    break;
++                                                case 'ZoneTransitionVehicle':
++                                                    rigNumber = equipmentID(refDocument.visitor);
++                                                    thisETL.CheckEquipmentQueue[refDocument.visitor.name] = refDocument.visitor;
++                                                    thisETL.CheckPersonQueue[refDocument.equipment_operator.employee_number] = refDocument.equipment_operator;
++
++                                                    machineDataItem.RigNumber = rigNumber;
++                                                    machineDataItem.Visitor = rigNumber;
++                                                    machineDataItem.Position = refDocument.reader.name;
++                                                    machineDataItem.PositionRegion = refDocument.reader.region;
++                                                    machineDataItem.EquipmentOperator = personID(refDocument.equipment_operator);
++                                                    machineDataItem.DirectionName = refDocument.direction_name;
++                                                    break;
++                                                case 'TagTest':
++                                                    rigNumber = personID(refDocument.person);
++                                                    thisETL.CheckPersonQueue[refDocument.person.employee_number] = refDocument.person;
++
++                                                    machineDataItem.RigNumber = rigNumber;
++                                                    machineDataItem.Person = rigNumber;
++                                                    machineDataItem.OverallResult = refDocument.overall_result;
++                                                    break;
++                                            }
++
++                                            if (rigNumber !== '') {
++                                                var machineDataDateItem = {
++                                                    Date: dateTime.format('DD/MM/YYYY'),
++                                                    DateObj: dateTime.toDate(),
++                                                    Done: true,
++                                                    ReadingType: refDocument.type,
++                                                    RigNumber: rigNumber
++                                                };
++                                                thisETL.CheckMachineDataDatesQueue[`${machineDataDateItem.Date}_${machineDataDateItem.RigNumber}`] = machineDataDateItem;
++                                            }
++
++                                            Api.Data.InsertData({}, 'Machines.Data', machineDataItem, function () { }, Api.StandardApiError, true);
++
++                                            Api.Data.DeleteData({}, 'Machines.Queue', change.documentKey, function () {
++                                            }, Api.StandardApiError, true, true);
++                                        }
+                                     }
++                                } catch (ex) {
++                                    console.log(`Queue Item Error (${change.fullDocument._id}): ${ex}`);
++                                    change.fullDocument.Error = '' + ex;
++                                    Api.Data.UpdateData({}, "Machines.Queue", change.documentKey, change.fullDocument, function () { }, Api.StandardApiError, true);
+                                 }
+                             }
+                         }
+@@ -343,7 +349,9 @@ var thisETL = {
+                             handleChange(change);
+                         });
+ 
+-                        Api.Data.GetAllEntities({}, 'Machines.Queue', true, function (machinesQueue) {
++                        Api.Data.GetSpecificEntities({}, 'Machines.Queue', true, {
++                            "Error": { "$exists": false }
++                        }, function (machinesQueue) {
+                             machinesQueue.forEach(queueItem => {
+                                 handleChange({
+                                     operationType: 'insert',
+-- 
+2.25.1
+

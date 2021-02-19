@@ -1,0 +1,25 @@
+From 496d22fda0adbfc1ba8d762775ddefdcc620b5ba Mon Sep 17 00:00:00 2001
+From: Stephan Coertzen <coertzen.jfs@gmail.com>
+Date: Fri, 5 Feb 2021 15:28:20 +0200
+Subject: [PATCH] End of week checkin
+
+---
+ .../Data/Entities/Custom/Machines/QueueScripts/KroondalETL.js   | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/server/api/Data/Entities/Custom/Machines/QueueScripts/KroondalETL.js b/server/api/Data/Entities/Custom/Machines/QueueScripts/KroondalETL.js
+index 9833a02..6af3a02 100644
+--- a/server/api/Data/Entities/Custom/Machines/QueueScripts/KroondalETL.js
++++ b/server/api/Data/Entities/Custom/Machines/QueueScripts/KroondalETL.js
+@@ -173,7 +173,7 @@ var thisETL = {
+ 
+                 Api.Data.InsertData({}, 'Machines.DataDates', dataDateItem, function () { }, Api.StandardApiError, true);
+                 done();
+-            }
++            } else done();
+         }, Api.StandardApiError);
+     },
+ 
+-- 
+2.25.1
+

@@ -1,0 +1,211 @@
+commit c23ff896d3b206788909bb3cdcb8a9519b3e7185
+Author: Stephan Coertzen <coertzen.jfs@gmail.com>
+Date:   Fri Feb 19 11:00:36 2021 +0200
+
+    Fixes for frontend Dashboard Map
+
+diff --git a/server/api/Data/Api.Data.UploadUserLocalStorage.js b/server/api/Data/Api.Data.UploadUserLocalStorage.js
+index 3551275..27e9e16 100644
+--- a/server/api/Data/Api.Data.UploadUserLocalStorage.js
++++ b/server/api/Data/Api.Data.UploadUserLocalStorage.js
+@@ -21,6 +21,27 @@ Api.Data.UploadUserLocalStorage = function(req, res) {
+                     Api.Data.DeleteData(req,
+                         'App.UserLocalStorage', { _id: fields.Data._id },
+                         function() {
++                            var userData = JSON.parse(fields.Data.Data);
++
++                            var newData = {};
++                            for (var prop in userData) {
++                                var propIsBogus = false;
++
++                                if (parseFloat(prop) <= 2000000) {
++                                    if (Api.Core.NotNothing(userData[prop])) {
++                                        if (userData[prop].toString().length === 1) {
++                                            propIsBogus = true;
++                                        }
++                                    }
++                                }
++
++                                if (!propIsBogus) {
++                                    newData[prop] = userData[prop];
++                                }
++                            }
++
++                            fields.Data.Data = JSON.stringify(newData);
++
+                             Api.Data.InsertData(req,
+                                 'App.UserLocalStorage',
+                                 fields.Data,
+diff --git a/wwwroot/scripts/Web.App.js b/wwwroot/scripts/Web.App.js
+index 549878c..44ba740 100644
+--- a/wwwroot/scripts/Web.App.js
++++ b/wwwroot/scripts/Web.App.js
+@@ -791,6 +791,17 @@ Web.App.UploadLocalStorage = function () {
+             uploadCache._id = Web.App.User.UserName;
+             uploadCache.Data = {};
+ 
++            // Fix for localstorage bug
++            for (var i = 0; i < localStorage.length; i++) {
++                if (WAC.NotNothing(localStorage.key(i)))
++                    if (WAC.NotNothing(localStorage.getItem(localStorage.key(i)))) {
++                        if (parseFloat(localStorage.key(i)) <= 2000000) {
++                            if (localStorage.getItem(localStorage.key(i)).toString().length === 1)
++                                localStorage.removeItem(localStorage.key(i));
++                        }
++                    }
++            }
++
+             for (var i = 0; i < localStorage.length; i++) {
+                 if (localStorage.key(i))
+                     if ((localStorage.key(i) !== 'CachedPages') &&
+@@ -1054,6 +1065,17 @@ Web.App.LocalStorageMaintenance = function () {
+                 if (localStorage.getItem(localStorage.key(i)).indexOf('{"ControlPages":[') !== -1)
+                     localStorage.removeItem(localStorage.key(i));
+     }
++
++    // Fix for localstorage bug
++    for (var i = 0; i < localStorage.length; i++) {
++        if (WAC.NotNothing(localStorage.key(i)))
++            if (WAC.NotNothing(localStorage.getItem(localStorage.key(i)))) {
++                if (parseFloat(localStorage.key(i)) <= 2000000) {
++                    if (localStorage.getItem(localStorage.key(i)).toString().length === 1)
++                        localStorage.removeItem(localStorage.key(i));
++                }
++            }
++    }
+ };
+ 
+ /**
+diff --git a/wwwroot/scripts/controllers/Web.Controller.ScopeAdditions.js b/wwwroot/scripts/controllers/Web.Controller.ScopeAdditions.js
+index 8a670c3..64f5a7b 100644
+--- a/wwwroot/scripts/controllers/Web.Controller.ScopeAdditions.js
++++ b/wwwroot/scripts/controllers/Web.Controller.ScopeAdditions.js
+@@ -1410,5 +1410,16 @@ Web.Controller.ScopeAdditions = {
+         }
+ 
+         Web.App.Navigator.IgnoreOffline = false;
++
++        // Fix for localstorage bug
++        for (var i = 0; i < localStorage.length; i++) {
++            if (WAC.NotNothing(localStorage.key(i)))
++                if (WAC.NotNothing(localStorage.getItem(localStorage.key(i)))) {
++                    if (parseFloat(localStorage.key(i)) <= 2000000) {
++                        if (localStorage.getItem(localStorage.key(i)).toString().length === 1)
++                            localStorage.removeItem(localStorage.key(i));
++                    }
++                }
++        }
+     }
+ };
+diff --git a/wwwroot/scripts/controllers/custom/Web.Controller.CustomDashboardGlobalFunctions.js b/wwwroot/scripts/controllers/custom/Web.Controller.CustomDashboardGlobalFunctions.js
+index 89c7e95..cfdcfba 100644
+--- a/wwwroot/scripts/controllers/custom/Web.Controller.CustomDashboardGlobalFunctions.js
++++ b/wwwroot/scripts/controllers/custom/Web.Controller.CustomDashboardGlobalFunctions.js
+@@ -2929,18 +2929,28 @@ $scope.SVGMapRender = function (
+     if ($S.MapWidgets[widget._id].DataPosition === 0) $S.MapWidgets[widget._id].DataPosition = 1;
+ 
+     var customDashboardData = $E($S.CustomDashboardDataResponse[$S.MapWidgets[widget._id].DataSourceID]).Where(dataSourceFilter).ToArray();//.filter(i => i.Site === 'Kroondal');
++    
++    customDashboardData.forEach(item => {
++        item.DateTimeFilter = `${item.Date} - ${item.Time}`;
++    });
++    var customDashboardDataDataTimeIndex = WAC.ProjectArrayToObject(customDashboardData, 'DateTimeFilter', 'Date', true);
++
+     eval(`var times = [...new Set(customDashboardData.map(i => i.Date + ' - ' + i.Time))];`);
+     eval(`var indexField = [...new Set(customDashboardData.map(i => i[$S.MapWidgets[widget._id].TimeIndexField]))];`);
+     $S.MapWidgets[widget._id].DataSourceProcessed = [];
++
++    var resourceLastPoint = {};
++    //times.splice(0, 100).forEach(time => {
+     times.forEach(time => {
+         var timeItem = {
+             Time: time,
+-            Items: customDashboardData.filter(i => (i.Date + ' - ' + i.Time) === time)
++            Items: ((WAC.NotNothing(customDashboardDataDataTimeIndex[time])) ? customDashboardDataDataTimeIndex[time]: [])//customDashboardData.filter(i => (i.Date + ' - ' + i.Time) === time)
+         };
+ 
+         var newList = [];
+ 
+-        indexField.forEach(fieldValue => {
++        eval(`var itemsIndexField = [...new Set(timeItem.Items.map(i => i[$S.MapWidgets[widget._id].TimeIndexField]))];`);
++        itemsIndexField.forEach(fieldValue => {
+             var indexValues = timeItem.Items.filter(i => i[$S.MapWidgets[widget._id].TimeIndexField] === fieldValue);
+ 
+             if (indexValues.length > 0) {
+@@ -2983,32 +2993,25 @@ $scope.SVGMapRender = function (
+ 
+                 newList.push(itemToAdd);
+             }
++
++            if (newList.length > 0)
++                resourceLastPoint[fieldValue] = newList[newList.length - 1];
+         });
+ 
+         timeItem.Items = newList;
+ 
+-        eval(`var itemsIndexField = [...new Set(timeItem.Items.map(i => i[$S.MapWidgets[widget._id].TimeIndexField]))];`);
+-
+         if (itemsIndexField.length < indexField.length) {
+-            var missingIndexFields = indexField.filter(function (v) {
++            indexField.filter(function (v) {
+                 return !itemsIndexField.includes(v);
+-            });
+-
+-            missingIndexFields.forEach(missingIndexField => {
+-                for (var i = ($S.MapWidgets[widget._id].DataSourceProcessed.length - 1); i >= 0; i--) {
+-                    var getItem = $S.MapWidgets[widget._id].DataSourceProcessed[i].Items.filter(tItem => tItem[$S.MapWidgets[widget._id].TimeIndexField] === missingIndexField);
+-                    if (getItem.length > 0) {
+-                        timeItem.Items.push(getItem[0]);
+-                        break;
+-                    }
+-                }
++            }).forEach(fieldValue => {
++                if (WAC.NotNothing(resourceLastPoint[fieldValue])) timeItem.Items.push(resourceLastPoint[fieldValue]);
+             });
+         }
+ 
+         $S.MapWidgets[widget._id].DataSourceProcessed.push(timeItem);
+     });
+ 
+-    console.log($S.MapWidgets[widget._id].DataSourceProcessed);
++    //console.log($S.MapWidgets[widget._id].DataSourceProcessed);
+ 
+     $S.MapWidgets[widget._id].DataPositionItem = $S.MapWidgets[widget._id].DataSourceProcessed[$S.MapWidgets[widget._id].DataPosition];
+ 
+@@ -3103,7 +3106,7 @@ $scope.SVGMapRender = function (
+                 $("#" + widget._id).find("#" + position + "_Text").css('cursor', 'pointer');
+                 $("#" + widget._id).find("#" + position).css('cursor', 'pointer');
+ 
+-                $("#" + widget._id).find("#" + position).find('title').html($S.MapWidgets[widget._id].PositionsData[position].Items.map(i => i[timeIndexField]).toString());
++                $("#" + widget._id).find("#" + position).find('title').html($S.MapWidgets[widget._id].PositionsData[position].Items.map(i => ((WAC.NotNothing(i[timeIndexField])) ? i[timeIndexField]: '')).toString());
+ 
+                 switch ($S.MapWidgets[widget._id].PositionsData[position].StatusWeight) {
+                     case 0:
+diff --git a/wwwroot/scripts/data/Web.App.Data.js b/wwwroot/scripts/data/Web.App.Data.js
+index 364ce7b..7005ca7 100644
+--- a/wwwroot/scripts/data/Web.App.Data.js
++++ b/wwwroot/scripts/data/Web.App.Data.js
+@@ -807,6 +807,23 @@ Web.App.Data = {
+                                     }
+ 
+                                     ignoreKeys += 'HistoryPostEvents,CachedPages,CachedScriptVersions,CachedScripts,';
++                                    
++                                    for (var prop in data) {
++                                        var isBugProperty = false;
++                                        if (parseFloat(prop) <= 2000000) {
++                                            if (WAC.NotNothing(data[prop])) {
++                                                if (data[prop].toString().length === 1)
++                                                    isBugProperty = true;
++                                            }
++                                        }
++
++                                        if (!isBugProperty) {
++                                            if (ignoreKeys.indexOf(prop) === -1)
++                                                localStorage.setItem(prop, data[prop]);
++                                            else if (WAC.NotNothing(localStorage.getItem(prop)))
++                                                localStorage.removeItem(prop);
++                                        }
++                                    }
+ 
+                                     for (var prop in data) {
+                                         if (ignoreKeys.indexOf(prop) === -1)

@@ -1,0 +1,90 @@
+From 9ae8bb0fa1a8f6a89198c1a79962f206f19aacbd Mon Sep 17 00:00:00 2001
+From: Stephan Coertzen <coertzen.jfs@gmail.com>
+Date: Mon, 8 Feb 2021 14:15:42 +0200
+Subject: [PATCH] Fixed Equipment and Resource Check Inserts
+
+---
+ .../Machines/QueueScripts/KroondalETL.js      | 26 +++++++++++++------
+ 1 file changed, 18 insertions(+), 8 deletions(-)
+
+diff --git a/server/api/Data/Entities/Custom/Machines/QueueScripts/KroondalETL.js b/server/api/Data/Entities/Custom/Machines/QueueScripts/KroondalETL.js
+index c6b1645..91e2519 100644
+--- a/server/api/Data/Entities/Custom/Machines/QueueScripts/KroondalETL.js
++++ b/server/api/Data/Entities/Custom/Machines/QueueScripts/KroondalETL.js
+@@ -44,8 +44,9 @@ var thisETL = {
+     CheckPersonExists: function (Api, person, done) {
+         console.log(`Checking to add Person ${person.employee_number}`);
+ 
++        var resourceID = `${person.lamproom_id.split(' ').join('').toLowerCase()}_${person.employee_number.split(' ').join('').toLowerCase()}`;
+         Api.Data.GetSpecificEntities({}, 'Proj.Resources', true, {
+-            Name: person.employee_number
++            _id: resourceID
+         }, function (resource) {
+             let objectHash = CryptoJS.MD5(JSON.stringify(person)).toString();
+ 
+@@ -65,10 +66,14 @@ var thisETL = {
+                     thisETL.CheckResourceMetricView(Api, resource[0], function () {
+                         done();
+                     });
+-                } else done();
++                } else {
++                    thisETL.CheckResourceMetricView(Api, resource[0], function () {
++                        done();
++                    });
++                }
+             } else {
+                 var newResource = {
+-                    _id: `${person.lamproom_id.split(' ').join('').toLowerCase()}_${person.employee_number.split(' ').join('').toLowerCase()}`,
++                    _id: resourceID,
+                     CurrentLocation: thisETL.SiteLocationGPS,
+                     Executor: thisETL.ExecutorID,
+                     Groups: [],
+@@ -106,8 +111,9 @@ var thisETL = {
+     CheckEquipmentExists: function (Api, equipment, done) {
+         console.log(`Checking to add Equipment ${equipment.name}`);
+ 
++        var equipmentID = `${equipment.name.split(' ').join('').toLowerCase()}_${equipment.type.split(' ').join('').toLowerCase()}`;
+         Api.Data.GetSpecificEntities({}, 'Proj.Resources', true, {
+-            Name: equipment.name
++            _id: equipmentID
+         }, function (resource) {
+             let objectHash = CryptoJS.MD5(JSON.stringify(equipment)).toString();
+ 
+@@ -123,10 +129,14 @@ var thisETL = {
+                     thisETL.CheckResourceMetricView(Api, resource[0], function () {
+                         done();
+                     });
+-                } else done();
++                } else {
++                    thisETL.CheckResourceMetricView(Api, resource[0], function () {
++                        done();
++                    });
++                }
+             } else {
+                 var newResource = {
+-                    _id: `${equipment.name.split(' ').join('').toLowerCase()}_${equipment.type.split(' ').join('').toLowerCase()}`,
++                    _id: equipmentID,
+                     CurrentLocation: thisETL.SiteLocationGPS,
+                     Executor: thisETL.ExecutorID,
+                     Groups: [],
+@@ -159,7 +169,7 @@ var thisETL = {
+ 
+     CheckMachineDataDatesQueue: {},
+     CheckMachineDataDatesExists: function (Api, dataDateItem, done) {
+-        console.log(`Checking to add Machine Data Date ${dataDateItem.Date} ${dataDateItem.RigNumber} ${dataDateItem.ReadingType}`);
++        //console.log(`Checking to add Machine Data Date ${dataDateItem.Date} ${dataDateItem.RigNumber} ${dataDateItem.ReadingType}`);
+ 
+         Api.Data.GetSpecificEntities({}, 'Machines.DataDates', true, {
+             Date: dataDateItem.Date,
+@@ -167,7 +177,7 @@ var thisETL = {
+             ReadingType: dataDateItem.ReadingType
+         }, function (dataDates) {
+             if (dataDates.length === 0) {
+-                console.log(`Insert Machine Data Date ${dataDateItem.Date} ${dataDateItem.RigNumber} ${dataDateItem.ReadingType}`);
++                //console.log(`Insert Machine Data Date ${dataDateItem.Date} ${dataDateItem.RigNumber} ${dataDateItem.ReadingType}`);
+ 
+                 dataDateItem._id = Api.Core.MongoObjectId();
+ 
+-- 
+2.25.1
+
